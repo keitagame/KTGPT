@@ -12,6 +12,21 @@ token_ids = np.array([12, 456, 789, 22])
 
 # ベクトル化された入力（埋め込み）
 embedded = embedding_matrix[token_ids]
+def positional_encoding(seq_len, dim):
+    pos = np.arange(seq_len)[:, np.newaxis]
+    i = np.arange(dim)[np.newaxis, :]
+    angle_rates = 1 / np.power(10000, (2 * (i // 2)) / np.float32(dim))
+    angle_rads = pos * angle_rates
+
+    # 偶数：sin, 奇数：cos
+    pos_encoding = np.zeros((seq_len, dim))
+    pos_encoding[:, 0::2] = np.sin(angle_rads[:, 0::2])
+    pos_encoding[:, 1::2] = np.cos(angle_rads[:, 1::2])
+    return pos_encoding
+seq_len, dim = embedded.shape
+pos_enc = positional_encoding(seq_len, dim)
+embedded_with_pos = embedded + pos_enc
+
 def self_attention(x):
     d_k = x.shape[-1]
     
@@ -28,6 +43,12 @@ def self_attention(x):
     attention_weights = softmax(scores)
     output = attention_weights @ V
     return output
+def output_layer(x, vocab_size):
+    d_model = x.shape[-1]
+    W_out = np.random.randn(d_model, vocab_size)
+    b_out = np.random.randn(vocab_size)
+    logits = x @ W_out + b_out
+    return logits
 
 def softmax(x):
     e_x = np.exp(x - np.max(x, axis=-1, keepdims=True))
@@ -57,7 +78,7 @@ def layer_norm_with_params(x, gamma, beta, eps=1e-5):
     std = x.std(axis=-1, keepdims=True)
     return gamma * (x - mean) / (std + eps) + beta
 # セルフアテンションの出力
-attn_out = self_attention(embedded)
+attn_out = self_attention(embedded_with_pos)
 
 # 残差とLayerNorm（パラメータなしの場合）
 residual1 = embedded + attn_out
@@ -72,3 +93,5 @@ ffn_out = feed_forward(normed1, hidden_dim=256)
 # 残差接続 + LayerNorm（第2段）
 residual2 = normed1 + ffn_out
 normed2 = layer_norm_with_params(residual2,gamma,beta)
+probs = softmax(output_layer(normed2, vocab_size=10000))
+print(probs)
